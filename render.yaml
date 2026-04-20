@@ -1,0 +1,17 @@
+services:
+  - type: cron
+    name: fvg-prototype
+    runtime: python
+    plan: starter
+    schedule: "*/5 * * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m src.run_prototype
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: FVG_OUTPUT_DIR
+        value: /var/data/fvg-output
+    disk:
+      name: fvg-data
+      mountPath: /var/data
+      sizeGB: 1
