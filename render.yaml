@@ -9,9 +9,3 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
-      - key: FVG_OUTPUT_DIR
-        value: /var/data/fvg-output
-    disk:
-      name: fvg-data
-      mountPath: /var/data
-      sizeGB: 1

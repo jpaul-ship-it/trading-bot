@@ -44,16 +44,25 @@ CANDLES_PER_TF = {
     "4h":  500,   # ~83 days
 }
 
-OUTPUT_DIR = Path(os.environ.get("FVG_OUTPUT_DIR", "output"))
+OUTPUT_DIR = os.environ.get("FVG_OUTPUT_DIR", "")
+
+# Active states worth seeing in the logs — skip stale/invalidated noise
+ACTIVE_STATES = {"unfilled", "tagged"}
 
 
 def run() -> None:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # File output is optional — if FVG_OUTPUT_DIR is set, CSVs are written.
+    # Either way, all active FVGs print to stdout (visible in Render logs).
+    write_files = bool(OUTPUT_DIR)
+    if write_files:
+        out = Path(OUTPUT_DIR)
+        out.mkdir(parents=True, exist_ok=True)
+
     summary_rows = []
 
     for sym_label, product_id in SYMBOLS:
         for tf in TIMEFRAMES:
-            print(f"[{sym_label} {tf}] fetching {CANDLES_PER_TF[tf]} candles...")
+            print(f"\n[{sym_label} {tf}] fetching {CANDLES_PER_TF[tf]} candles...")
             try:
                 candles = fetch_ohlcv(product_id, tf, CANDLES_PER_TF[tf])
             except Exception as e:
@@ -64,9 +73,10 @@ def run() -> None:
                 print(f"  ! no data returned")
                 continue
 
-            candles_out = OUTPUT_DIR / f"candles_{sym_label}_{tf}.csv"
-            candles.to_csv(candles_out)
-            print(f"  wrote {len(candles)} candles -> {candles_out}")
+            print(f"  got {len(candles)} candles  ({candles.index[0]} -> {candles.index[-1]})")
+
+            if write_files:
+                candles.to_csv(out / f"candles_{sym_label}_{tf}.csv")
 
             fvgs = detect_fvgs(
                 candles,
@@ -77,13 +87,25 @@ def run() -> None:
                 stale_after=50,
             )
             fvg_df = fvgs_to_dataframe(fvgs)
-            fvg_out = OUTPUT_DIR / f"fvgs_{sym_label}_{tf}.csv"
-            fvg_df.to_csv(fvg_out, index=False)
+
+            if write_files:
+                fvg_df.to_csv(out / f"fvgs_{sym_label}_{tf}.csv", index=False)
 
             state_counts = (
                 fvg_df["state"].value_counts().to_dict() if not fvg_df.empty else {}
             )
-            print(f"  detected {len(fvgs)} FVGs  states={state_counts}")
+            print(f"  FVGs: {len(fvgs)} total  {state_counts}")
+
+            # Print active FVGs (unfilled/tagged) for quick eyeball in logs
+            if not fvg_df.empty:
+                active = fvg_df[fvg_df["state"].isin(ACTIVE_STATES)]
+                if not active.empty:
+                    cols = ["direction", "state", "created_at", "top", "bottom",
+                            "displacement_ratio", "first_tag_at"]
+                    print(f"  ACTIVE ({len(active)}):")
+                    for _, row in active.iterrows():
+                        vals = "  ".join(f"{c}={row[c]}" for c in cols if c in row.index)
+                        print(f"    {vals}")
 
             summary_rows.append({
                 "symbol": sym_label,
@@ -99,10 +121,12 @@ def run() -> None:
             })
 
     summary_df = pd.DataFrame(summary_rows)
-    summary_path = OUTPUT_DIR / "summary.csv"
-    summary_df.to_csv(summary_path, index=False)
-    print(f"\nSummary:\n{summary_df.to_string(index=False)}")
-    print(f"\nAll outputs in: {OUTPUT_DIR.resolve()}")
+    if write_files:
+        summary_df.to_csv(Path(OUTPUT_DIR) / "summary.csv", index=False)
+    print(f"\n{'='*70}")
+    print(f"SUMMARY")
+    print(f"{'='*70}")
+    print(summary_df.to_string(index=False))
 
 
 if __name__ == "__main__":
