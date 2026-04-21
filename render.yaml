@@ -1,11 +1,11 @@
 services:
   - type: cron
-    name: fvg-prototype
+    name: crypto-alerter
     runtime: python
     plan: starter
     schedule: "*/5 * * * *"
     buildCommand: pip install -r requirements.txt
-    startCommand: python -m src.run_prototype
+    startCommand: python -m src.run_alerter
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
